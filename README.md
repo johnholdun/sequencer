@@ -1,6 +1,8 @@
 # Sequencer
 
-I'm designing a MIDI step sequencer for live electronic music performance.
+## A flexible multi-device MIDI sequencer for live electronic music performance
+
+**This is a work in progress!**
 
 The workflow is very heavily inspired by [Novation Circuit](https://novationmusic.com/en/circuit/circuit) with a dash of [Elektron Model:Cycles](https://www.elektron.se/products/modelsamples/)—patterns are set and triggered on a [Launchpad Mini Mk3](https://novationmusic.com/en/launch/launchpad-mini), parts are selected and can be played on a [MIDI Fighter 3D](https://www.midifighter.com/#3D), and melodies are played on a [Korg Microkey 25](https://www.korg.com/us/products/computergear/microkey/), but that’s just because those are the things I happen to have—it’s designed to work with any combination of devices, so long as they have some kind of visual feedback.
 
