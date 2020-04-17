@@ -13,3 +13,14 @@ A big goal of this is one-function-per-control. The first version put _everythin
 I'm writing this sequencer in Ruby, and it's using macOS's native MIDI bus to communicate with Ableton Live in my demo, but it could send MIDI to just about anything that accepts it.
 
 You're welcome to try this out, but there are no instructinos for running it and I offer no guarantees that it will work for you. I cannot offer any tech support right now. Hopefully this changes eventually.
+
+## TODO
+
+- Pattern switching
+- Dedicated mutes
+- Support chords in Voiced mode
+- Step length
+- Pattern chains
+- Pattern lengths seem to be buggy
+- Swing
+- Write tests
