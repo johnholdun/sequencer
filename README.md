@@ -16,11 +16,8 @@ You're welcome to try this out, but there are no instructinos for running it and
 
 ## TODO
 
-- Pattern switching
-- Dedicated mutes
-- Support chords in Voiced mode
-- Step length
 - Pattern chains
-- Pattern lengths seem to be buggy
+- Support chords in Voiced mode?
+- Adjust gate length on steps
 - Swing
-- Write tests
+- Write unit tests

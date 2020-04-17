@@ -64,6 +64,8 @@ class Sequencer
     # Every pattern starts at C2, velocity 100
     @last_note = PARTS.times.map { [36, 100] }
 
+    @playing_notes = PARTS.times.map { NOTES.times.map { false } }
+
     @sequences =
       PARTS.times.map do
         # Which patterns are in this sequence, and on what beat was this sequence
@@ -106,12 +108,10 @@ class Sequencer
     @presses = {}
 
     @states = {
-      mute: false,
       voice: false,
       play: false,
       record: false,
-      clear_notes: false,
-      clear_automation: false
+      clear: false
     }
 
     @colors = {}
@@ -122,7 +122,9 @@ class Sequencer
   def tick
     @now = Time.now.to_f
     if @states[:play]
-      @beat = (((@now - @started_at) * (@bpm / 60.0)) * 4).floor
+      precise_beat = (((@now - @started_at) * (@bpm / 60.0)) * 4)
+      @beat = precise_beat.floor
+      @microstep = precise_beat - @beat
     end
     handle_input
     unless @beat == @last_beat
@@ -188,31 +190,32 @@ class Sequencer
     case label
     when :performance
       perform(@focused_part, index, velocity)
-    when :parts
-      if @states[:mute]
-        unless @mutes[index]
-          @muting[index] = true
-          @mutes[index] = true
+    when :mutes
+      unless @mutes[index]
+        @muting[index] = true
+        @mutes[index] = true
 
-          NOTES.times.each do |note|
-            @note_output.puts(0x90 + index, note, 0)
-          end
+        NOTES.times.each do |note|
+          @note_output.puts(0x90 + index, note, 0)
         end
-      else
-        if @states[:voice]
-          note, velocity = @last_note[index]
-          perform(index, note, velocity)
-        end
-        # TODO: If any performance notes are pressed, queue part focus change
-        # but don't change it yet
-        @previous_focused_part = @focused_part
-        @focused_part = index
       end
+    when :parts
+      if @states[:voice]
+        note, velocity = @last_note[index]
+        perform(index, note, velocity)
+      end
+      # TODO: If any performance notes are pressed, queue part focus change
+      # but don't change it yet
+      @previous_focused_part = @focused_part
+      @focused_part = index
     when :patterns
       part = (index / PATTERNS.to_f).floor
       pattern = index % PATTERNS
-      # TODO: Set @draft_sequences[part] to current min and max pattern presses
-      # for part
+      if @states[:play]
+        @queued_sequences[part] = [pattern]
+      else
+        @sequences[part] = [[pattern], 0]
+      end
     when :steps
       @written_steps[index] = false
       # TODO: If a previous step is also pressed, set gate length for that step
@@ -222,7 +225,7 @@ class Sequencer
       if @presses[[:patterns, pattern_index]]
         @pattern_lengths[pattern_index] = index + 1
       end
-    when :mute, :voice, :play, :record, :clear_notes, :clear_automation
+    when :voice, :play, :record, :clear
       @states[label] = !@states[label]
       handle_play if label == :play
     end
@@ -231,6 +234,8 @@ class Sequencer
   end
 
   def handle_note_off(label, index)
+    return unless @presses[[label, index]]
+
     held = @now - @presses[[label, index]][1] >= HOLD_DURATION
 
     case label
@@ -238,43 +243,42 @@ class Sequencer
       @note_output.puts(0x80 + @focused_part, index, 0)
       # TODO: If no more performance notes are pressed, change part focus to
       # queued part focus
-    when :parts
-      if @states[:mute]
-        if @muting[index]
-          @muting[index] = false
-        else
-          @mutes[index] = false
-        end
+    when :mutes
+      if @muting[index]
+        @muting[index] = false
       else
-        if @states[:voice]
-          # TODO: @last_note could change between voiced part note on and voiced part note off
-          note, _ = @last_note[index]
-          @note_output.puts(0x80 + index, note, 0)
-        end
-        if held
-          # TODO: Support queued focus
-          @focused_part = @previous_focused_part
-        end
+        @mutes[index] = false
+      end
+    when :parts
+      if @states[:voice]
+        # TODO: @last_note could change between voiced part note on and voiced part note off
+        note, _ = @last_note[index]
+        @note_output.puts(0x80 + index, note, 0)
+      end
+      if held
+        # TODO: Support queued focus
+        @focused_part = @previous_focused_part
       end
     when :patterns
-      # Are any other patterns still pressed for this part?
-      part = (index / PATTERNS.to_f).floor
-      if @presses.none? { |(p_label, p_index), _| p_label == label && p_index != index && (p_index / PATTERNS.to_f).floor == part }
-        @queued_sequences[part] = @draft_sequences[part]
-        @draft_sequences[part] = []
-      end
+      # TODO: Pattern chaining
+      # part = (index / PATTERNS.to_f).floor
+      # if @presses.none? { |(p_label, p_index), _| p_label == label && p_index != index && (p_index / PATTERNS.to_f).floor == part }
+      #   @queued_sequences[part] = @draft_sequences[part]
+      #   @draft_sequences[part] = []
+      # end
     when :steps
       pattern, _ = current_step(@focused_part)
-
-      if @patterns[@focused_part][pattern][index].all?(&:zero?)
-        note, velocity = @last_note[@focused_part]
-        @patterns[@focused_part][pattern][index][note] = velocity
-      else
-        unless @written_steps[index] || @presses.any? { |(p_label, p_index), _| p_label == label && p_index != index  }
-          @patterns[@focused_part][pattern][index] = NOTES.times.map { 0 }
+      unless @presses[[:patterns, @focused_part * PATTERNS + pattern]]
+        if @patterns[@focused_part][pattern][index].all?(&:zero?)
+          note, velocity = @last_note[@focused_part]
+          @patterns[@focused_part][pattern][index][note] = velocity
+        else
+          unless @written_steps[index] || @presses.any? { |(p_label, p_index), _| p_label == label && p_index != index  }
+            @patterns[@focused_part][pattern][index] = NOTES.times.map { 0 }
+          end
         end
       end
-    when :mute, :voice, :play, :record, :clear_notes, :clear_automation
+    when :voice, :play, :record, :clear
       if held
         @states[label] = !@states[label]
         handle_play if label == :play
@@ -291,6 +295,8 @@ class Sequencer
 
     if @states[:record]
       pattern, step = current_step(part)
+      step += 1 if @microstep >= 0.5
+      step = 0 if step >= @pattern_lengths[part * PATTERNS + pattern]
       @patterns[part][pattern][step][note] = velocity
     elsif (pressed_step = @presses.find { |(label, _), _| label == :steps })
       pattern, _ = current_step(part)
@@ -300,11 +306,14 @@ class Sequencer
     end
   end
 
-  # This should be called only when @states[:play] changes
+  # This is called only when @states[:play] changes
   def handle_play
     if @states[:play]
       @started_at = @now
       @beat = (((@now - @started_at) * (@bpm / 60.0)) * 4).floor
+      PARTS.times.each do |part|
+        @sequences[part][1] = @beat
+      end
     else
       unless @presses[[:record, 0]]
         @states[:record] = false
@@ -332,9 +341,17 @@ class Sequencer
   end
 
   def handle_new_beat
+    @queued_sequences.each_with_index do |sequences, part|
+      next if sequences.size.zero?
+      _, step = current_step(part)
+      next unless step.zero?
+      @sequences[part] = [sequences, @beat]
+      @queued_sequences[part] = []
+    end
+
     pattern, step = current_step(@focused_part)
 
-    if @states[:clear_notes]
+    if @states[:clear]
       @patterns[@focused_part][pattern][step] = NOTES.times.map { 0 }
     end
 
@@ -356,18 +373,17 @@ class Sequencer
       PARTS.times.each do |part|
         pattern, step = current_step(part)
         @patterns[part][pattern][step].each_with_index do |velocity, note|
-          case velocity
-          when -1
-            # This is a hold; do nothing
-          when 0
-            last_step = step.zero? ? @pattern_lengths[pattern] - 1 : step - 1
-            unless @patterns[part][pattern][last_step][note].zero?
-              notes += [0x80 + part, note, 0]
-            end
-          else
-            unless @mutes[part]
-              notes += [0x90 + part, note, velocity]
-            end
+          # This is a hold; do nothing
+          next if velocity == -1
+
+          if @playing_notes[part][note]
+            notes += [0x80 + part, note, 0]
+            @playing_notes[part][note] = false
+          end
+
+          if velocity > 0 && !@mutes[part]
+            @playing_notes[part][note] = true
+            notes += [0x90 + part, note, velocity]
           end
         end
       end
@@ -376,9 +392,16 @@ class Sequencer
   end
 
   def current_step(part)
-    # TODO: Return current pattern and step for part
-    current_pattern = 0
-    current_step = @beat % @pattern_lengths[0]
+    sequence, started_at = @sequences[part]
+    lengths = sequence.map { |pattern| @pattern_lengths[part * PATTERNS + pattern] }
+    current_step = (@beat - started_at) % lengths.inject(:+)
+    current_pattern =
+      sequence.find do |pattern|
+        length = @pattern_lengths[part * PATTERNS + pattern]
+        next true if current_step < length
+        current_step -= length
+        false
+      end
     [current_pattern, current_step]
   end
 
@@ -400,10 +423,13 @@ class Sequencer
   def update_visuals
     @config.each do |label, index|
       case label
+      when :mutes
+        PARTS.times.each do |part|
+          set_color(label, part, @mutes[part] ? 127 : 0)
+        end
       when :parts
         PARTS.times.each do |part|
-          active = @states[:mute] ? @mutes[part] : part == @focused_part
-          set_color(label, part, active ? 127 : 0)
+          set_color(label, part, part == @focused_part ? 127 : 0)
         end
       when :patterns
         PARTS.times.each do |part|
@@ -412,7 +438,7 @@ class Sequencer
             color =
               if active_pattern == pattern
                 3
-              elsif @sequences[part].first.include?(pattern)
+              elsif @queued_sequences[part].include?(pattern)
                 1
               else
                 0
@@ -434,7 +460,7 @@ class Sequencer
             end
           set_color(label, step, color)
         end
-      when :mute, :voice, :play, :record, :clear_notes, :clear_automation
+      when :mute, :voice, :play, :record, :clear
         set_color(label, 0, @states[label] ? 127 : 0)
       end
     end

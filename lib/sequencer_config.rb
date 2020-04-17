@@ -56,32 +56,37 @@ class SequencerConfig
       parts: [],
       patterns: [],
       steps: [],
-      mute: nil,
+      mutes: [],
       voice: nil,
       play: nil,
       record: nil,
-      clear_notes: nil,
-      clear_automation: nil
+      clear: nil,
     }
 
-    PARTS.times do |part|
+    # TODO: Make all these constants part of the config, and configurable
+    Sequencer::PARTS.times do |part|
       config[:parts].push \
-        await_incoming_note("Press Part #{part + 1} of #{PARTS}")
+        await_incoming_note("Press Part #{part + 1} of #{Sequencer::PARTS}")
     end
 
-    PARTS.times do |part|
-      PATTERNS.times do |pattern|
+    Sequencer::PARTS.times do |part|
+      config[:mutes].push \
+        await_incoming_note("Press Mute #{part + 1} of #{Sequencer::PARTS}")
+    end
+
+    Sequencer::PARTS.times do |part|
+      Sequencer::PATTERNS.times do |pattern|
         config[:patterns].push \
-          await_incoming_note("Press Part #{part + 1}, Pattern #{pattern + 1} of #{PATTERNS}")
+          await_incoming_note("Press Part #{part + 1}, Pattern #{pattern + 1} of #{Sequencer::PATTERNS}")
       end
     end
 
-    STEPS.times do |step|
+    Sequencer::STEPS.times do |step|
       config[:steps].push \
-        await_incoming_note("Press Step #{step + 1} of #{STEPS}")
+        await_incoming_note("Press Step #{step + 1} of #{Sequencer::STEPS}")
     end
 
-    %i(mute voice play record clear_notes clear_automation).each do |key|
+    %i(voice clear record play).each do |key|
       config[key] =
         await_incoming_note \
           "Press #{key.to_s.gsub(/_/, ' ').gsub(/\b(.)/, '\L\1')}"
