@@ -62,7 +62,7 @@ class Sequencer
       (PARTS * PATTERNS).times.map { STEPS }
 
     # Every pattern starts at C2, velocity 100
-    @last_note = PARTS.times.map { [36, 100] }
+    @last_note = PARTS.times.map { [48, 100] }
 
     @playing_notes = PARTS.times.map { NOTES.times.map { false } }
 
